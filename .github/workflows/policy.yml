@@ -45,7 +45,7 @@ jobs:
           LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          if ! grep -Eq '^(\.github/|\.claude/|CLAUDE\.md|rulesets/|Makefile)' review/files.txt; then
+          if ! grep -Eq '^(\.github/|\.claude/|\.githooks/|CLAUDE\.md|rulesets/|Makefile)' review/files.txt; then
             echo "scanned $(wc -l < review/files.txt) files, none protected"; exit 0
           fi
           issue=$(printf '%s' "$PR_BODY" | grep -oE '(Closes|Fixes) [A-Z]+-[0-9]+' | head -1 | cut -d' ' -f2 || true)
