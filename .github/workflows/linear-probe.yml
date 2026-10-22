@@ -44,7 +44,7 @@ jobs:
           done
           echo "RESULT good-at-creation=$g1k good-added=$g2k bad-after-ready=$b1k"
   read:
-    if: inputs.issue != '' && inputs.issue != 'setup' && inputs.issue != 'reorder' && inputs.issue != 'archive'
+    if: inputs.issue != '' && inputs.issue != 'setup' && inputs.issue != 'reorder' && inputs.issue != 'archive' && inputs.issue != 'image'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -97,3 +97,49 @@ jobs:
             jq -n --arg id "$k" '{query:"mutation($id:String!){issueArchive(id:$id){success}}",variables:{id:$id}}' \
               | curl -sS https://api.linear.app/graphql -H "Authorization: $LINEAR_API_TOKEN" -H 'Content-Type: application/json' -d @- | jq -c --arg k "$k" '{($k): .}'
           done
+  image:
+    if: inputs.issue == 'image'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and push probe images
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          img=ghcr.io/irma-ai/temp-probe
+          for v in a b broken; do
+            broken=0; [ "$v" = broken ] && broken=1
+            docker build -q -t "$img:probe-$v" --build-arg PROBE_VERSION="probe-$v" --build-arg PROBE_BROKEN=$broken probe
+            docker push -q "$img:probe-$v"
+            echo "digest_$v=$(docker inspect --format '{{index .RepoDigests 0}}' "$img:probe-$v" | cut -d@ -f2)" >> "$GITHUB_OUTPUT"
+          done
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/irma-ai/temp-probe
+          subject-digest: ${{ steps.build.outputs.digest_a }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/irma-ai/temp-probe
+          subject-digest: ${{ steps.build.outputs.digest_b }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/irma-ai/temp-probe
+          subject-digest: ${{ steps.build.outputs.digest_broken }}
+          push-to-registry: true
+      - name: Verify one attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh attestation verify "oci://ghcr.io/irma-ai/temp-probe:probe-a" --repo "$GITHUB_REPOSITORY"
