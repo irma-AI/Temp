@@ -1,0 +1,3 @@
+#!/bin/sh
+# Live-test probe: records that git ran this hook.
+echo "pre-commit ran $(date -u +%FT%TZ)" >> "$(git rev-parse --git-dir)/hook-log"
