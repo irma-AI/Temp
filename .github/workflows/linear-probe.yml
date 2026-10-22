@@ -44,7 +44,7 @@ jobs:
           done
           echo "RESULT good-at-creation=$g1k good-added=$g2k bad-after-ready=$b1k"
   read:
-    if: inputs.issue != '' && inputs.issue != 'setup' && inputs.issue != 'reorder' && inputs.issue != 'archive' && inputs.issue != 'image'
+    if: inputs.issue != '' && inputs.issue != 'setup' && inputs.issue != 'reorder' && inputs.issue != 'archive' && inputs.issue != 'image' && inputs.issue != 'codegen'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -143,3 +143,42 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh attestation verify "oci://ghcr.io/irma-ai/temp:probe-a" --repo "$GITHUB_REPOSITORY"
+  codegen:
+    if: inputs.issue == 'codegen'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Two databases from the same schema, three generations
+        working-directory: probe/codegen
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null && npm i --no-audit --no-fund kysely-codegen@0.20.0 kysely@0.29.7 pg@8.23.1 >/dev/null
+          for db in one two; do
+            psql -h localhost -U postgres -c "CREATE DATABASE $db"
+            # shift OIDs in the second database so catalog order differs
+            [ "$db" = two ] && psql -h localhost -U postgres -d two -c "CREATE TABLE filler(a int); DROP TABLE filler; CREATE TYPE junk AS ENUM ('x'); DROP TYPE junk;"
+            psql -q -h localhost -U postgres -d $db -v ON_ERROR_STOP=1 -f schema.sql
+          done
+          gen() { npx kysely-codegen --dialect postgres --url "postgres://postgres:postgres@localhost:5432/$1" --out-file "$2" >/dev/null; }
+          gen one a.ts; gen one b.ts; gen two c.ts
+          sha256sum a.ts b.ts c.ts
+          cmp a.ts b.ts && echo "SAME DB, TWO RUNS: identical"
+          cmp a.ts c.ts && echo "TWO DBS: identical" || diff a.ts c.ts
+          npx kysely-codegen --dialect postgres --url postgres://postgres:postgres@localhost:5432/two --out-file a.ts --verify && echo "VERIFY: pass"
+          psql -q -h localhost -U postgres -d two -c "ALTER TABLE note ADD COLUMN extra text"
+          npx kysely-codegen --dialect postgres --url postgres://postgres:postgres@localhost:5432/two --out-file a.ts --verify && echo "VERIFY AFTER CHANGE: pass (wrong)" || echo "VERIFY AFTER CHANGE: fails (right)"
+          head -40 a.ts
