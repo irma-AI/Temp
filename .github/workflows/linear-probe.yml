@@ -44,7 +44,7 @@ jobs:
           done
           echo "RESULT good-at-creation=$g1k good-added=$g2k bad-after-ready=$b1k"
   read:
-    if: inputs.issue != '' && inputs.issue != 'setup' && inputs.issue != 'reorder'
+    if: inputs.issue != '' && inputs.issue != 'setup' && inputs.issue != 'reorder' && inputs.issue != 'archive'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -85,3 +85,15 @@ jobs:
           st IRM-3 "$ready" Ready; sleep 20; lab IRM-3 Add
           sleep 20
           for k in IRM-2 IRM-3; do echo "== $k"; gql 'query($id:String!){issue(id:$id){history(first:50){nodes{createdAt addedLabels{name} removedLabels{name} fromState{name} toState{name}}}}}' "$(jq -n --arg id "$k" '{id:$id}')" | jq -c '.data.issue.history.nodes'; done
+  archive:
+    if: inputs.issue == 'archive'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
+        run: |
+          for k in IRM-1 IRM-2 IRM-3; do
+            jq -n --arg id "$k" '{query:"mutation($id:String!){issueArchive(id:$id){success}}",variables:{id:$id}}' \
+              | curl -sS https://api.linear.app/graphql -H "Authorization: $LINEAR_API_TOKEN" -H 'Content-Type: application/json' -d @- | jq -c --arg k "$k" '{($k): .}'
+          done
