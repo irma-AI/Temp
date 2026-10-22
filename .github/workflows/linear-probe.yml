@@ -44,7 +44,7 @@ jobs:
           done
           echo "RESULT good-at-creation=$g1k good-added=$g2k bad-after-ready=$b1k"
   read:
-    if: inputs.issue != '' && inputs.issue != 'setup' && inputs.issue != 'reorder' && inputs.issue != 'archive' && inputs.issue != 'image' && inputs.issue != 'codegen'
+    if: inputs.issue != '' && inputs.issue != 'setup' && inputs.issue != 'reorder' && inputs.issue != 'archive' && inputs.issue != 'image' && inputs.issue != 'codegen' && inputs.issue != 'intake'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -182,3 +182,23 @@ jobs:
           psql -q -h localhost -U postgres -d two -c "ALTER TABLE note ADD COLUMN extra text"
           npx kysely-codegen --dialect postgres --url postgres://postgres:postgres@localhost:5432/two --out-file a.ts --verify && echo "VERIFY AFTER CHANGE: pass (wrong)" || echo "VERIFY AFTER CHANGE: fails (right)"
           head -40 a.ts
+  intake:
+    if: inputs.issue == 'intake'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          gql() { jq -n --arg q "$1" --argjson v "${2:-null}" '{query:$q,variables:($v // {})}' \
+            | curl -sSf https://api.linear.app/graphql -H "Authorization: $LINEAR_API_TOKEN" -H 'Content-Type: application/json' -d @- \
+            | jq -e 'if .errors then error(.errors|tostring) else . end'; }
+          t=$(gql '{teams(filter:{key:{eq:"IRM"}}){nodes{id states{nodes{id name}}}} issueLabels(filter:{name:{eq:"ci-change"}}){nodes{id}}}')
+          tid=$(jq -r '.data.teams.nodes[0].id' <<<"$t"); ready=$(jq -r '.data.teams.nodes[0].states.nodes[]|select(.name=="Ready")|.id' <<<"$t"); lid=$(jq -r '.data.issueLabels.nodes[0].id' <<<"$t")
+          read -r id key < <(gql 'mutation($i:IssueCreateInput!){issueCreate(input:$i){issue{id identifier}}}' "$(jq -n --arg t "$tid" --arg l "$lid" '{i:{teamId:$t,title:"Scratch: hook and skill probe files for the cloud-session tests",labelIds:[$l]}}')" | jq -r '.data.issueCreate.issue|"\(.id) \(.identifier)"')
+          sleep 30  # changes right after creation fold into the creation entry
+          gql 'mutation($id:String!,$s:String!){issueUpdate(id:$id,input:{stateId:$s}){success}}' "$(jq -n --arg id "$id" --arg s "$ready" '{id:$id,s:$s}')" >/dev/null
+          sleep 5
+          gql 'query($id:String!){issue(id:$id){history{nodes{createdAt addedLabels{name} toState{name}}}}}' "$(jq -n --arg id "$id" '{id:$id}')" | jq -c .data.issue.history.nodes
+          echo "ISSUE $key"
