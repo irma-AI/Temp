@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git config core.hooksPath >/dev/null || git config core.hooksPath .githooks; echo \"SessionStart: core.hooksPath=$(git config core.hooksPath)\" | tee -a \"$(git rev-parse --git-dir)/hook-log\""
+          }
+        ]
+      }
+    ]
+  }
+}
