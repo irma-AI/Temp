@@ -16,3 +16,11 @@ jobs:
       - run: |
           echo "event=$GITHUB_EVENT_NAME sha=$GITHUB_SHA ref=$GITHUB_REF"
           test -f README.md
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: checks
+    steps:
+      - env:
+          CANARY: ${{ secrets.CANARY }}
+        run: echo "canary length=${#CANARY}"
