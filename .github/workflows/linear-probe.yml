@@ -8,6 +8,7 @@ on:
 permissions: {}
 jobs:
   setup:
+    if: inputs.issue == ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -42,3 +43,17 @@ jobs:
             gql 'query($id:String!){issue(id:$id){state{name} labels{nodes{name}} history(first:50){nodes{createdAt addedLabels{name} toState{name}}}}}' "$(jq -n --arg id "$k" '{id:$id}')" 2>/dev/null | jq -c '.data.issue'
           done
           echo "RESULT good-at-creation=$g1k good-added=$g2k bad-after-ready=$b1k"
+  read:
+    if: inputs.issue != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
+          ISSUES: ${{ inputs.issue }}
+        run: |
+          for k in ${ISSUES//,/ }; do
+            echo "== $k"
+            jq -n --arg id "$k" '{query:"query($id:String!){issue(id:$id){state{name} labels{nodes{name}} history(first:50){nodes{createdAt addedLabelIds addedLabels{name} fromState{name} toState{name}}}}}",variables:{id:$id}}' \
+              | curl -sS https://api.linear.app/graphql -H "Authorization: $LINEAR_API_TOKEN" -H 'Content-Type: application/json' -d @- | jq -c .
+          done
