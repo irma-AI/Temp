@@ -166,7 +166,7 @@ jobs:
         working-directory: probe/codegen
         run: |
           set -euo pipefail
-          npm init -y >/dev/null && npm i --no-audit --no-fund kysely-codegen@0.20.0 kysely@0.29.7 pg@8.23.1 >/dev/null
+          npm init -y >/dev/null && npm i --no-audit --no-fund kysely-codegen@0.20.0 kysely@0.29.7 pg@8.23.1 typescript@6 >/dev/null
           for db in one two; do
             psql -h localhost -U postgres -c "CREATE DATABASE $db"
             # shift OIDs in the second database so catalog order differs
