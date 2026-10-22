@@ -44,7 +44,7 @@ jobs:
           done
           echo "RESULT good-at-creation=$g1k good-added=$g2k bad-after-ready=$b1k"
   read:
-    if: inputs.issue != '' && inputs.issue != 'setup'
+    if: inputs.issue != '' && inputs.issue != 'setup' && inputs.issue != 'reorder'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -60,11 +60,28 @@ jobs:
             q 'query($id:String!){issue(id:$id){history{nodes{id createdAt actor{name} botActor{name} addedLabelIds toStateId}}}}' "$uuid"
             q 'query($id:String!){issue(id:$id){history(last:50,includeArchived:true){nodes{id createdAt}}}}' "$uuid"
           done
-  canary:
+  reorder:
+    if: inputs.issue == 'reorder'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: checks
     steps:
       - env:
-          CANARY: ${{ secrets.CANARY }}
-        run: echo "canary length=${#CANARY}"
+          LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          gql() { jq -n --arg q "$1" --argjson v "${2:-null}" '{query:$q,variables:($v // {})}' \
+            | curl -sSf https://api.linear.app/graphql -H "Authorization: $LINEAR_API_TOKEN" -H 'Content-Type: application/json' -d @- \
+            | jq -e 'if .errors then error(.errors|tostring) else . end'; }
+          t=$(gql '{teams(filter:{key:{eq:"IRM"}}){nodes{states{nodes{id name}}}} issueLabels(filter:{name:{eq:"ci-change"}}){nodes{id}}}')
+          sid() { jq -r --arg n "$1" '.data.teams.nodes[0].states.nodes[]|select(.name==$n)|.id' <<<"$t"; }
+          todo=$(sid Todo); ready=$(sid Ready); lid=$(jq -r '.data.issueLabels.nodes[0].id' <<<"$t")
+          st() { gql 'mutation($id:String!,$s:String!){issueUpdate(id:$id,input:{stateId:$s}){success}}' "$(jq -n --arg id "$1" --arg s "$2" '{id:$id,s:$s}')" >/dev/null; echo "$(date -u +%T) $1 -> state $3"; }
+          lab() { gql "mutation(\$id:String!,\$l:String!){issue$2Label(id:\$id,labelId:\$l){success}}" "$(jq -n --arg id "$1" --arg l "$lid" '{id:$id,l:$l}')" >/dev/null; echo "$(date -u +%T) $1 label $2"; }
+          # reset both to Todo without the label
+          for k in IRM-2 IRM-3; do lab $k Remove; st $k "$todo" Todo; done
+          sleep 20
+          lab IRM-2 Add; sleep 20; st IRM-2 "$ready" Ready
+          sleep 20
+          st IRM-3 "$ready" Ready; sleep 20; lab IRM-3 Add
+          sleep 20
+          for k in IRM-2 IRM-3; do echo "== $k"; gql 'query($id:String!){issue(id:$id){history(first:50){nodes{createdAt addedLabels{name} removedLabels{name} fromState{name} toState{name}}}}}' "$(jq -n --arg id "$k" '{id:$id}')" | jq -c '.data.issue.history.nodes'; done
