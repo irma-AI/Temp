@@ -52,10 +52,13 @@ jobs:
           LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
           ISSUES: ${{ inputs.issue }}
         run: |
+          q() { jq -n --arg q "$1" --arg id "$2" '{query:$q,variables:{id:$id}}' | curl -sS https://api.linear.app/graphql -H "Authorization: $LINEAR_API_TOKEN" -H 'Content-Type: application/json' -d @- | jq -c .; }
+          q '{viewer{name admin} organization{name}}' x
           for k in ${ISSUES//,/ }; do
             echo "== $k"
-            jq -n --arg id "$k" '{query:"query($id:String!){issue(id:$id){state{name} labels{nodes{name}} history(first:50){nodes{createdAt addedLabelIds addedLabels{name} fromState{name} toState{name}}}}}",variables:{id:$id}}' \
-              | curl -sS https://api.linear.app/graphql -H "Authorization: $LINEAR_API_TOKEN" -H 'Content-Type: application/json' -d @- | jq -c .
+            uuid=$(q 'query($id:String!){issue(id:$id){id createdAt updatedAt}}' "$k" | tee /dev/stderr | jq -r .data.issue.id)
+            q 'query($id:String!){issue(id:$id){history{nodes{id createdAt actor{name} botActor{name} addedLabelIds toStateId}}}}' "$uuid"
+            q 'query($id:String!){issue(id:$id){history(last:50,includeArchived:true){nodes{id createdAt}}}}' "$uuid"
           done
   canary:
     runs-on: ubuntu-latest
