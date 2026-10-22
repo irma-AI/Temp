@@ -21,3 +21,26 @@ jobs:
           if [ -n "$ISSUE" ]; then
             gql 'query($id:String!){issue(id:$id){identifier state{name} labels{nodes{name}} history(first:100){nodes{createdAt addedLabels{name} removedLabels{name} fromState{name} toState{name}}}}}' "$(jq -n --arg id "$ISSUE" '{id:$id}')"
           fi
+  token:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: review
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          show_full_output: true
+          prompt: Reply with the number of files in this repository's root folder.
+          claude_args: >-
+            --max-turns 5
+            --allowedTools Read,Grep,Glob
+            --json-schema '{"type":"object","properties":{"count":{"type":"integer"}},"required":["count"]}'
+      - run: echo "$OUT"
+        env:
+          OUT: ${{ steps.review.outputs.structured_output }}
