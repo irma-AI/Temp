@@ -8,7 +8,7 @@ on:
 permissions: {}
 jobs:
   setup:
-    if: inputs.issue == ''
+    if: inputs.issue == 'setup'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -44,7 +44,7 @@ jobs:
           done
           echo "RESULT good-at-creation=$g1k good-added=$g2k bad-after-ready=$b1k"
   read:
-    if: inputs.issue != ''
+    if: inputs.issue != '' && inputs.issue != 'setup'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -57,3 +57,11 @@ jobs:
             jq -n --arg id "$k" '{query:"query($id:String!){issue(id:$id){state{name} labels{nodes{name}} history(first:50){nodes{createdAt addedLabelIds addedLabels{name} fromState{name} toState{name}}}}}",variables:{id:$id}}' \
               | curl -sS https://api.linear.app/graphql -H "Authorization: $LINEAR_API_TOKEN" -H 'Content-Type: application/json' -d @- | jq -c .
           done
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: checks
+    steps:
+      - env:
+          CANARY: ${{ secrets.CANARY }}
+        run: echo "canary length=${#CANARY}"
