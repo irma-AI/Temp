@@ -1,0 +1,23 @@
+name: linear-probe
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue identifier to read history for (optional)
+        required: false
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read-only Linear probe
+        env:
+          LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          gql() { jq -n --arg q "$1" --argjson v "${2:-null}" '{query:$q,variables:($v // {})}' | curl -sS https://api.linear.app/graphql -H "Authorization: $LINEAR_API_TOKEN" -H 'Content-Type: application/json' -d @-; echo; }
+          gql '{organization{name urlKey} teams{nodes{key name states{nodes{name type}} labels{nodes{name}}}}}'
+          if [ -n "$ISSUE" ]; then
+            gql 'query($id:String!){issue(id:$id){identifier state{name} labels{nodes{name}} history(first:100){nodes{createdAt addedLabels{name} removedLabels{name} fromState{name} toState{name}}}}}' "$(jq -n --arg id "$ISSUE" '{id:$id}')"
+          fi

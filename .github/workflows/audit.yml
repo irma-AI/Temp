@@ -1,0 +1,26 @@
+name: audit
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Who pushed, and the commit message
+        run: |
+          echo "actor=$GITHUB_ACTOR triggering_actor=$GITHUB_TRIGGERING_ACTOR"
+          git log -1 --format=fuller
+      - name: Read the ruleset with GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "== rules/branches/main"; gh api "repos/$GITHUB_REPOSITORY/rules/branches/main" --jq '[.[] | {type, ruleset_id, checks: .parameters.required_status_checks}]' || echo "FAILED"
+          echo "== rulesets"; gh api "repos/$GITHUB_REPOSITORY/rulesets" --jq '[.[] | {id, name, enforcement}]' || echo "FAILED"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/rulesets" --jq '.[0].id' || true)
+          [ -z "$id" ] || { echo "== ruleset $id"; gh api "repos/$GITHUB_REPOSITORY/rulesets/$id" --jq '{enforcement, rules: [.rules[].type]}' || echo "FAILED"; }
