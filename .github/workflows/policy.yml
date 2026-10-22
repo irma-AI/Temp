@@ -11,6 +11,7 @@ jobs:
     if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: checks
     permissions:
       contents: read
       pull-requests: read
@@ -26,6 +27,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           path: pr
           persist-credentials: false
+      - name: Environment secret reachable
+        env:
+          CANARY: ${{ secrets.CANARY }}
+        run: echo "canary length=${#CANARY}"
       - name: Collect the diff
         env:
           GH_TOKEN: ${{ github.token }}
