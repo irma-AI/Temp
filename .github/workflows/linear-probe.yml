@@ -34,7 +34,7 @@ jobs:
         env:
           T: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
-          echo "length=${#T} prefix=${T:0:13}"
+          case "$T" in sk-ant-oat01-*) echo "length=${#T} setup-token prefix: yes";; *) echo "length=${#T} setup-token prefix: no";; esac
           printf '%s' "$T" | grep -q '[[:space:]]' && echo "contains whitespace" || echo "no whitespace"
           code=$(curl -s -o body.json -w '%{http_code}' https://api.anthropic.com/v1/messages \
             -H "Authorization: Bearer $(printf '%s' "$T" | tr -d '[:space:]')" -H 'anthropic-version: 2023-06-01' \
