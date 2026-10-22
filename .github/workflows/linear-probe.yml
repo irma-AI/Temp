@@ -30,6 +30,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Token shape (no value)
+        env:
+          T: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          echo "length=${#T} prefix=${T:0:13}"
+          printf '%s' "$T" | grep -q '[[:space:]]' && echo "contains whitespace" || echo "no whitespace"
+          code=$(curl -s -o body.json -w '%{http_code}' https://api.anthropic.com/v1/messages \
+            -H "Authorization: Bearer $(printf '%s' "$T" | tr -d '[:space:]')" -H 'anthropic-version: 2023-06-01' \
+            -H 'anthropic-beta: oauth-2025-04-20' -H 'content-type: application/json' \
+            -d '{"model":"claude-haiku-5-5","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}')
+          echo "direct call http=$code"; jq -c '{type, error: .error.message}' body.json
       - id: review
         uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1
         with:
